@@ -135,7 +135,6 @@ def add_job_row(letter_id: str, email: str, bureau: str, dispute_type: str, roun
 
 # ---------- Imports that rely on env after load_dotenv ----------
 from gspread.exceptions import APIError
-from utils.access_gate import guard_access, get_user_meta, get_remaining_credits_today
 from utils.auth import auth_ui, find_user, remaining_quota, refresh_cached_user
 # Optional tracker
 try:
@@ -367,8 +366,10 @@ if rq["daily_left"] <= 0 and plan != "pro":
 
 
 # ---------- Credits/plan badge ----------
-# Pull metadata (plan) and compute remaining credits from Users sheet Also quota-safe (these may read Sheets)
-meta = quota_retry_call("_meta_retry", get_user_meta, email) or {}
+# Build user record and compute remaining credits from Users sheet
+user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
+plan = (user_rec.get("plan") or "individual").lower()
+rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','monthly_limit'}
 
 def _render_letter_credits_sidebar(q: dict):
     st.sidebar.subheader("💌 Letter Credits")
@@ -557,4 +558,5 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
