@@ -5,6 +5,48 @@ from datetime import datetime
 import socket
 import streamlit as st
 from google.oauth2.service_account import Credentials
+import streamlit as st
+from utils.auth import find_user, _cached_all_users, _get_users_sheet, _with_backoff
+
+def _sheet_consent(email: str) -> bool:
+    """Read consent from Users sheet (column named 'consent' if present). Falls back to False."""
+    rec = find_user(email) or {}
+    v = str(rec.get("consent", "")).strip().lower()
+    return v in {"1", "true", "yes", "y"}
+
+def _set_sheet_consent(email: str, value: bool = True) -> None:
+    """Write consent to Users sheet if a 'consent' column exists; otherwise cache locally."""
+    headers, rows = _cached_all_users()
+    if not headers or not email:
+        st.session_state["consent_ok"] = bool(value)
+        return
+
+    email_l = email.strip().lower()
+    try:
+        col_email = next(i for i, h in enumerate(headers) if h.strip().lower() == "email")
+    except StopIteration:
+        col_email = 0
+
+    row_idx = None
+    for idx, r in enumerate(rows, start=2):
+        if col_email < len(r) and (r[col_email] or "").strip().lower() == email_l:
+            row_idx = idx
+            break
+    if row_idx is None:
+        st.session_state["consent_ok"] = bool(value)
+        return
+
+    # write only if a 'consent' column exists
+    try:
+        col_consent = next(i for i, h in enumerate(headers) if h.strip().lower() == "consent")
+    except StopIteration:
+        st.session_state["consent_ok"] = bool(value)
+        return
+
+    ws = _get_users_sheet()
+    _with_backoff(ws.update_cell, row_idx, col_consent + 1, "TRUE" if value else "FALSE")
+    st.session_state["consent_ok"] = bool(value)
+
 
 # ✅ Centralized consent helpers (BoostBridge sheet, no duplicates)
 #from utils.access_gate import has_consent, record_consent
@@ -150,4 +192,5 @@ Using it to generate letters for others (friends, clients, etc.) is strictly pro
 
         st.session_state.step = 2
         st.rerun()
+
 
