@@ -399,6 +399,19 @@ try:
 except Exception:
     pass
 
+# --- Admin check (no 'meta' anywhere) ---
+admin_str = ""
+try:
+    admin_str = str(st.secrets.get("ADMIN_EMAILS", ""))  # comma- or semicolon-separated
+except Exception:
+    admin_str = ""
+allowed_admins = {e.strip().lower() for e in admin_str.replace(";", ",").split(",") if e.strip()}
+
+user_is_admin = (
+    (email or "").lower() in allowed_admins
+    or (user_rec.get("role", "").strip().lower() == "admin")
+)
+
 # ------ Admin check ------
 def _is_truthy(v):
     return str(v).strip().lower() in {"true", "1", "yes", "y"}
@@ -545,6 +558,7 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
 
