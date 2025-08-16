@@ -353,15 +353,18 @@ if not email:
     st.error("No email found for the current session.")
     st.stop()
 
-# Guard access with quota-safe auto-retry
-try:
-    _ = quota_retry_call("_ga_retry", guard_access, email, starter_daily_limit=3)
-except PermissionError:
-    st.error("Your subscription isn’t active. Please subscribe to continue.")
-    st.stop()
-except RuntimeError:
-    st.info("You’ve reached today’s limit on the Starter plan. Upgrade for more.")
-    st.stop()
+# Use Users sheet quotas (auth.py) rather than access_gate guard
+from utils.auth import find_user, remaining_quota
+
+user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
+plan = (user_rec.get("plan") or "individual").lower()
+rq = remaining_quota(user_rec)
+
+# Do NOT hard-stop the whole app here; Step 8 will enforce at generation time.
+# Show a gentle heads-up if they're out of daily credits.
+if rq["daily_left"] <= 0 and plan != "pro":
+    st.info("You’ve hit today’s limit for your plan. You can still review steps; generation will be blocked until reset.")
+
 
 # ---------- Credits/plan badge ----------
 # Pull metadata (plan) and compute remaining credits from Users sheet Also quota-safe (these may read Sheets)
@@ -554,3 +557,4 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
