@@ -359,8 +359,7 @@ user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email
 rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','monthly_limit'}
 plan = (user_rec.get("plan") or "individual").lower()
 
-# Gentle banner if they’re out of daily credits (don’t block the app here;
-# Step 8 blocks generation when credits are exhausted)
+# Gentle info (don’t block here; Step 8 enforces credits on generation)
 if rq["daily_left"] <= 0 and plan != "pro":
     st.info(
         "You’ve hit today’s limit for your plan. "
@@ -399,35 +398,21 @@ try:
 except Exception:
     pass
 
-# --- Admin check (no 'meta' anywhere) ---
+# --- Admin check (no 'meta', no access_gate) ---
 admin_str = ""
 try:
     admin_str = str(st.secrets.get("ADMIN_EMAILS", ""))  # comma- or semicolon-separated
 except Exception:
     admin_str = ""
-allowed_admins = {e.strip().lower() for e in admin_str.replace(";", ",").split(",") if e.strip()}
 
+allowed_admins = {e.strip().lower() for e in admin_str.replace(";", ",").split(",") if e.strip()}
 user_is_admin = (
     (email or "").lower() in allowed_admins
     or (user_rec.get("role", "").strip().lower() == "admin")
 )
 
-# ------ Admin check ------
-def _is_truthy(v):
-    return str(v).strip().lower() in {"true", "1", "yes", "y"}
-
-# Option A: mark admins in the Users sheet with role=admin or is_admin=TRUE
-# Option B: or set an environment variable ADMIN_EMAILS="alice@x.com,bob@y.com"
-ADMIN_EMAILS = {s.strip().lower() for s in os.getenv("ADMIN_EMAILS", "").split(",") if s.strip()}
-
-IS_ADMIN = (
-    (meta.get("role", "").strip().lower() == "admin")
-    or _is_truthy(meta.get("is_admin", ""))
-    or (email.lower() in ADMIN_EMAILS)
-)
-
-# keep in session so pages can also check it if needed
-st.session_state["_is_admin"] = IS_ADMIN
+# keep in session so the router/sidebar can read it
+st.session_state["_is_admin"] = user_is_admin
 
 
 # ---------- Sidebar quick nav ----------
@@ -558,6 +543,7 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
 
