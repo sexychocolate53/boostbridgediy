@@ -7,7 +7,7 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 
 # ✅ Centralized consent helpers (BoostBridge sheet, no duplicates)
-from utils.access_gate import has_consent, record_consent
+#from utils.access_gate import has_consent, record_consent
 
 # ---------- Config ----------
 SHEETS_SCOPE = [
@@ -150,3 +150,4 @@ Using it to generate letters for others (friends, clients, etc.) is strictly pro
 
         st.session_state.step = 2
         st.rerun()
+
