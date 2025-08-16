@@ -352,62 +352,49 @@ if not email:
     st.error("No email found for the current session.")
     st.stop()
 
-# Use Users sheet quotas (auth.py) rather than access_gate guard
+# --- Access & quotas (Users sheet only) ---
 from utils.auth import find_user, remaining_quota
 
 user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
-plan = (user_rec.get("plan") or "individual").lower()
-rq = remaining_quota(user_rec)
-
-# Do NOT hard-stop the whole app here; Step 8 will enforce at generation time.
-# Show a gentle heads-up if they're out of daily credits.
-if rq["daily_left"] <= 0 and plan != "pro":
-    st.info("You’ve hit today’s limit for your plan. You can still review steps; generation will be blocked until reset.")
-
-
-# ---------- Credits/plan badge ----------
-# Build user record and compute remaining credits from Users sheet
-user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
-plan = (user_rec.get("plan") or "individual").lower()
 rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','monthly_limit'}
+plan = (user_rec.get("plan") or "individual").lower()
 
+# Gentle banner if they’re out of daily credits (don’t block the app here;
+# Step 8 blocks generation when credits are exhausted)
+if rq["daily_left"] <= 0 and plan != "pro":
+    st.info(
+        "You’ve hit today’s limit for your plan. "
+        "You can still review steps; generation will be blocked until reset."
+    )
+
+# --- Sidebar: Letter Credits ---
 def _render_letter_credits_sidebar(q: dict):
     st.sidebar.subheader("💌 Letter Credits")
-    # Compact details line (left of limit)
     st.sidebar.caption(
-        f"Daily left: {left if 'daily_left' not in q else int(q['daily_left'])}"
-        f" / {int(q['daily_limit'])} • "
-        f"Monthly left: {int(q['monthly_left'])} / {int(q['monthly_limit'])}"
+        f"Daily: {int(q['daily_left'])}/{int(q['daily_limit'])} • "
+        f"Monthly: {int(q['monthly_left'])}/{int(q['monthly_limit'])}"
     )
-    # Big “remaining” number (monthly)
+    # Big monthly remaining number
     st.sidebar.markdown(
         f"""
         <div style="font-size:28px;font-weight:800;line-height:1;margin:2px 0 6px 0;">
             {int(q.get('monthly_left', 0))}
         </div>
-        <div style="color:#6b7280;margin:-2px 0 8px 0;">
-            remaining this month
-        </div>
+        <div style="color:#6b7280;margin:-2px 0 8px 0;">remaining this month</div>
         """,
         unsafe_allow_html=True,
     )
-    # progress bar = monthly remaining
+    # Progress bar shows monthly remaining fraction
     denom = max(1, int(q["monthly_limit"]))
     pct = float(q["monthly_left"]) / float(denom)
     st.sidebar.progress(pct)
 
-# Build user record and compute remaining quota
-user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
-rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','monthly_limit'}
-plan = (meta.get("plan") or user_rec.get("plan") or "individual").lower()
-
-# Render the sidebar badge
 _render_letter_credits_sidebar(rq)
 
-# Optional tracker: keep it in sync with monthly credits
+# Optional tracker bootstrap (if you use it)
 try:
     if _HAS_TRACKER and not st.session_state.get("tracker_initialized"):
-        init_tracker_if_needed(mode=plan, starting_credits=rq["monthly_left"])
+        init_tracker_if_needed(mode=plan, starting_credits=int(rq["monthly_left"]))
         st.session_state.tracker_initialized = True
 except Exception:
     pass
@@ -558,5 +545,6 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
