@@ -23,16 +23,46 @@ PLAN_LIMITS = {
 # ---------- Google client (cached) ----------
 @st.cache_resource
 def _gc_from_env():
-    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if not cred_path or not os.path.exists(cred_path):
-        raise FileNotFoundError(
-            "Google credentials file not found. Set GOOGLE_APPLICATION_CREDENTIALS in your .env"
-        )
-    with open(cred_path, "r") as f:
-        service_account_info = json.load(f)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]  # sheets only; open_by_key
-    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
-    return gspread.authorize(creds)
+    """
+    Return a gspread client using creds from:
+    1) GCP_CREDS_B64 (base64 of service_account.json), or
+    2) st.secrets["gcp_service_account"] (full JSON table), or
+    3) GOOGLE_APPLICATION_CREDENTIALS file path, or
+    4) local service_account.json in repo root.
+
+    Cached so we don't rebuild the client each run.
+    """
+    # 1) base64 in env (optional)
+    b64 = os.getenv("GCP_CREDS_B64")
+    if b64:
+        info = json.loads(base64.b64decode(b64).decode("utf-8"))
+        creds = Credentials.from_service_account_info(info, scopes=SHEETS_SCOPE)
+        return gspread.authorize(creds)
+
+    # 2) Streamlit secrets (recommended on Cloud)
+    try:
+        if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
+            info = dict(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(info, scopes=SHEETS_SCOPE)
+            return gspread.authorize(creds)
+    except Exception:
+        pass
+
+    # 3) GOOGLE_APPLICATION_CREDENTIALS file path
+    gac = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if gac and os.path.exists(gac):
+        creds = Credentials.from_service_account_file(gac, scopes=SHEETS_SCOPE)
+        return gspread.authorize(creds)
+
+    # 4) local file in repo (if you ever added it)
+    if os.path.exists("service_account.json"):
+        creds = Credentials.from_service_account_file("service_account.json", scopes=SHEETS_SCOPE)
+        return gspread.authorize(creds)
+
+    raise RuntimeError(
+        "Google credentials not found. Provide gcp_service_account in secrets, "
+        "or GCP_CREDS_B64 env, or a service_account.json file."
+    )
 
 def _open_sheet(gc, wks_name: str):
     """
@@ -269,3 +299,4 @@ def record_consent(email: str, name: str = ""):
     ws.append_row([email, name or "", datetime.utcnow().isoformat()], value_input_option="USER_ENTERED")
     _cached_has_consent.clear()
     st.session_state[f"consent::{email}"] = True
+
