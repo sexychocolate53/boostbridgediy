@@ -19,13 +19,16 @@ st.set_page_config(
 )
 
 # ---------- Top Nav (single definition) ----------
-def render_top_nav(
-    contact_email="stacy@boostbridgediy.com",
-    brand="BoostBridgeDIY",
-    cta_text="Upgrade to Pro",
-    cta_url="https://buy.stripe.com/fZu3cw5E6fYIgsBeuB1B601"
-)
+from textwrap import dedent
 
+# ---------- Top Nav (single definition) ----------
+def render_top_nav(
+    contact_email: str = "stacy@boostbridgediy.com",
+    brand: str = "BoostBridgeDIY",
+    links: list[tuple[str, str]] | None = None,
+    cta_text: str | None = "Upgrade to Pro",
+    cta_url: str | None = "https://buy.stripe.com/fZu3cw5E6fYIgsBeuB1B601",
+):  # <-- the colon matters!
     if links is None:
         links = [("Docs", "#"), ("Privacy", "#"), ("Terms", "#")]
 
@@ -33,6 +36,11 @@ def render_top_nav(
     fg   = "#e2e8f0"   # slate-200
     acc  = "#22c55e"   # green-500
     link = "#93c5fd"   # blue-300
+
+    cta_html = (f"<a href='{cta_url}' target='_blank'>{cta_text}</a>"
+                if (cta_text and cta_url) else "")
+
+    links_html = " ".join([f"<a href='{u}' target='_blank'>{t}</a>" for t, u in links])
 
     html = dedent(f"""
     <style>
@@ -57,18 +65,15 @@ def render_top_nav(
     <div class="bb-nav">
       <div class="bb-row">
         <div class="bb-brand">🧠 {brand} <span style="opacity:.65;">• AI Letters</span></div>
-        <div class="bb-cta">
-          {("<a href='" + cta_url + "' target='_blank'>" + cta_text + "</a>") if cta_text and cta_url else ""}
-        </div>
+        <div class="bb-cta">{cta_html}</div>
         <div class="bb-links">
-          {" ".join([f"<a href='{u}' target='_blank'>{t}</a>" for t,u in links])}
+          {links_html}
           <span class="bb-contact" style="margin-left:10px; opacity:.75;">|
             <a href="mailto:{contact_email}">{contact_email}</a></span>
         </div>
       </div>
     </div>
     """)
-
     st.markdown(html, unsafe_allow_html=True)
 
 # ---------- Footer (define once, use once) ----------
@@ -543,6 +548,7 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
 
