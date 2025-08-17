@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ---------- Top Nav (single definition) ----------
-render_top_nav(
+def render_top_nav(
     contact_email="stacy@boostbridgediy.com",
     brand="BoostBridgeDIY",
     cta_text="Upgrade to Pro",
@@ -543,6 +543,7 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
 
