@@ -19,13 +19,13 @@ st.set_page_config(
 )
 
 # ---------- Top Nav (single definition) ----------
-def render_top_nav(
-    contact_email: str,
-    brand: str = "BoostBridgeDIY",
-    links: list[tuple[str, str]] | None = None,
-    cta_text: str | None = "Join Beta",
-    cta_url: str | None = "#",
-):
+render_top_nav(
+    contact_email="stacy@boostbridgediy.com",
+    brand="BoostBridgeDIY",
+    cta_text="Upgrade to Pro",
+    cta_url="https://buy.stripe.com/fZu3cw5E6fYIgsBeuB1B601"
+)
+
     if links is None:
         links = [("Docs", "#"), ("Privacy", "#"), ("Terms", "#")]
 
@@ -543,6 +543,7 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
 
 
