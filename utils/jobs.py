@@ -1,19 +1,31 @@
 # utils/jobs.py
-import os, json, time
+import os, json, time, base64
+from pathlib import Path
+
+import streamlit as st
 import gspread
 from gspread.exceptions import APIError
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from gspread.utils import rowcol_to_a1
 
 load_dotenv()
 
-JOBS_SHEET_ID = os.getenv("JOBS_SHEET_ID")
-GA_CRED_PATH  = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # absolute path to your JSON key
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
+# Read the Jobs sheet id from Secrets first (then env as fallback)
+JOBS_SHEET_ID = st.secrets.get("JOBS_SHEET_ID") or os.getenv("JOBS_SHEET_ID")
+
+# keep this for local dev fallback only
+GA_CRED_PATH  = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+# include Drive scope too so gspread can open the file
+SCOPE = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 LOCAL_TZ = ZoneInfo("America/New_York")
+
 
 # ---- small caches to reduce read spam (helps avoid 429) ----
 _WS_MEMO = {"ws": None, "ts": 0}
@@ -56,14 +68,47 @@ def _with_backoff(fn, *args, **kwargs):
     raise last_exc if last_exc else RuntimeError("Unknown Sheets error")
 
 def _client():
-    if not JOBS_SHEET_ID:
-        raise RuntimeError("JOBS_SHEET_ID is missing from .env")
-    if not GA_CRED_PATH or not os.path.exists(GA_CRED_PATH):
-        raise FileNotFoundError(
-            "Service account key not found. Set GOOGLE_APPLICATION_CREDENTIALS to a valid file path in .env. "
-            f"Current value: {GA_CRED_PATH}"
+    """
+    Authorize gspread using (in order):
+      1) st.secrets['gcp_service_account']  (Streamlit Cloud recommended)
+      2) GCP_CREDS_B64 (base64 JSON in env)
+      3) GOOGLE_APPLICATION_CREDENTIALS file path (local/dev)
+      4) ./google_creds.json (local/dev)
+    """
+    creds = None
+
+    # 1) Streamlit Secrets
+    if "gcp_service_account" in st.secrets:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], scopes=SCOPE
         )
-    creds = Credentials.from_service_account_file(GA_CRED_PATH, scopes=SCOPE)
+
+    # 2) Base64 env var
+    elif os.getenv("GCP_CREDS_B64"):
+        info = json.loads(base64.b64decode(os.environ["GCP_CREDS_B64"]).decode("utf-8"))
+        creds = Credentials.from_service_account_info(info, scopes=SCOPE)
+
+    # 3) File path (local/dev)
+    elif GA_CRED_PATH and os.path.exists(GA_CRED_PATH):
+        creds = Credentials.from_service_account_file(GA_CRED_PATH, scopes=SCOPE)
+
+    # 4) Local repo file (local/dev)
+    else:
+        project_root = Path(__file__).resolve().parents[1]
+        guess = project_root / os.getenv("GOOGLE_CREDS_PATH", "google_creds.json")
+        if guess.exists():
+            creds = Credentials.from_service_account_file(str(guess), scopes=SCOPE)
+
+    if creds is None:
+        raise FileNotFoundError(
+            "Google credentials not found. Set st.secrets['gcp_service_account'] "
+            "or GCP_CREDS_B64 / GOOGLE_APPLICATION_CREDENTIALS / google_creds.json."
+        )
+    if not JOBS_SHEET_ID:
+        raise FileNotFoundError(
+            "JOBS_SHEET_ID is not set. Add it to Streamlit Secrets (or env)."
+        )
+
     return gspread.authorize(creds)
 
 def _open_jobs_ws():
@@ -79,11 +124,27 @@ def _open_jobs_ws():
     try:
         ws = _with_backoff(sh.worksheet, "Jobs")
     except gspread.WorksheetNotFound:
-        ws = _with_backoff(sh.add_worksheet, title="Jobs", rows=1000, cols=len(HEADERS))
-        _with_backoff(ws.update, f"A1:{rowcol_to_a1(1, len(HEADERS))}", [HEADERS], value_input_option="USER_ENTERED")
-        _WS_MEMO["ws"] = ws
-        _WS_MEMO["ts"] = time.time()
-        return ws
+        # try to use the first sheet if it already has our headers
+        ws = sh.sheet1
+        first_row = _with_backoff(ws.row_values, 1) or []
+        if [h.lower() for h in first_row[:len(HEADERS)]] != [h.lower() for h in HEADERS]:
+            # doesn’t look like our jobs sheet → create a new tab named "Jobs"
+            ws = _with_backoff(sh.add_worksheet, title="Jobs", rows=1000, cols=len(HEADERS))
+            _with_backoff(ws.update, f"A1:{rowcol_to_a1(1, len(HEADERS))}",
+                          [HEADERS], value_input_option="USER_ENTERED")
+
+    # Ensure our base headers are present (case-insensitive)
+    first_row = _with_backoff(ws.row_values, 1) or []
+    if [h.lower() for h in first_row[:len(HEADERS)]] != [h.lower() for h in HEADERS]:
+        new_cols = max(ws.col_count, len(HEADERS))
+        _with_backoff(ws.resize, rows=max(ws.row_count, 1), cols=new_cols)
+        _with_backoff(ws.update, f"A1:{rowcol_to_a1(1, len(HEADERS))}",
+                      [HEADERS], value_input_option="USER_ENTERED")
+
+    _WS_MEMO["ws"] = ws
+    _WS_MEMO["ts"] = time.time()
+    return ws
+
 
     # Ensure our base headers are present (case-insensitive) without shrinking columns
     first_row = _with_backoff(ws.row_values, 1) or []
@@ -316,3 +377,4 @@ def requeue_job(letter_id: str, payload: dict | None = None):
     if payload is not None:
         fields["payload_json"] = json.dumps(payload, ensure_ascii=False)
     update_job_fields(letter_id, **fields)
+
