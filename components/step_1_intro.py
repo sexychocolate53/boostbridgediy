@@ -152,7 +152,14 @@ Using it to generate letters for others (friends, clients, etc.) is strictly pro
         st.error("We couldn't detect your account email. Please log in again.")
         return
 
-    already = has_consent(email)
+    already = st.session_state.get("consent_ok")
+    if already is None:
+        try:
+            already = _sheet_consent(email)
+        except Exception:
+            already = False
+    st.session_state["consent_ok"] = bool(already)
+
 
     if already:
         st.success("✅ Consent on file. Thank you!")
@@ -192,5 +199,6 @@ Using it to generate letters for others (friends, clients, etc.) is strictly pro
 
         st.session_state.step = 2
         st.rerun()
+
 
 
