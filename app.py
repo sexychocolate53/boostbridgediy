@@ -19,16 +19,13 @@ st.set_page_config(
 )
 
 # ---------- Top Nav (single definition) ----------
-from textwrap import dedent
-
-# ---------- Top Nav (single definition) ----------
 def render_top_nav(
     contact_email: str = "stacy@boostbridgediy.com",
     brand: str = "BoostBridgeDIY",
     links: list[tuple[str, str]] | None = None,
-    cta_text: str | None = "Upgrade to Pro",
-    cta_url: str | None = "https://buy.stripe.com/fZu3cw5E6fYIgsBeuB1B601",
-):  # <-- the colon matters!
+    cta_text: str | None = None,
+    cta_url: str | None = None,
+):
     if links is None:
         links = [("Docs", "#"), ("Privacy", "#"), ("Terms", "#")]
 
@@ -90,8 +87,7 @@ def render_footer(contact_email: str = "boostbridgediy@gmail.com"):
         unsafe_allow_html=True,
     )
 
-# Render the nav immediately (safe: functions are already defined)
-render_top_nav(contact_email="stacy@boostbridgediy.com", brand="BoostBridgeDIY")
+# (Removed the early render_top_nav() call — we’ll render it conditionally later)
 
 # ---------- Load env & initialize third-party clients ----------
 load_dotenv()
@@ -324,6 +320,13 @@ def render_public_landing():
 # ---------- Auth gate ----------
 logged_in = auth_ui()
 if not logged_in:
+    # Public header (no CTA)
+    render_top_nav(
+        contact_email="stacy@boostbridgediy.com",
+        brand="BoostBridgeDIY",
+        cta_text=None,
+        cta_url=None,
+    )
     render_public_landing()
     render_footer("stacy@boostbridgediy.com")
     st.stop()
@@ -363,6 +366,30 @@ from utils.auth import find_user, remaining_quota
 user_rec = (st.session_state.get("user") or {}).get("record") or find_user(email) or {}
 rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','monthly_limit'}
 plan = (user_rec.get("plan") or "individual").lower()
+
+# ---------- Dynamic top nav with plan-based CTA ----------
+INDIVIDUAL_LINK = os.getenv("STRIPE_LINK_INDIVIDUAL", "")  # e.g., https://buy.stripe.com/....
+PRO_LINK        = os.getenv("STRIPE_LINK_PRO", "")         # e.g., https://buy.stripe.com/....
+PORTAL_LINK     = os.getenv("STRIPE_PORTAL_LINK", "")      # optional: customer portal
+
+cta_text, cta_url = None, None
+if plan == "starter" and INDIVIDUAL_LINK:
+    cta_text, cta_url = "Upgrade (Individual)", INDIVIDUAL_LINK
+elif plan == "individual" and PRO_LINK:
+    cta_text, cta_url = "Go Pro (Unlimited)", PRO_LINK
+# plan == "pro" -> no CTA
+
+links = [("Docs", "#"), ("Privacy", "#"), ("Terms", "#")]
+if PORTAL_LINK:
+    links = [("Manage billing", PORTAL_LINK)] + links
+
+render_top_nav(
+    contact_email="stacy@boostbridgediy.com",
+    brand="BoostBridgeDIY",
+    links=links,
+    cta_text=cta_text,
+    cta_url=cta_url,
+)
 
 # Gentle info (don’t block here; Step 8 enforces credits on generation)
 if rq["daily_left"] <= 0 and plan != "pro":
@@ -433,7 +460,6 @@ if st.sidebar.button("📜 Dispute History"):
 if st.session_state.get("_is_admin") and st.sidebar.button("📊 Dashboard"):
     st.session_state.step = 100
     st.rerun()
-
 
 st.sidebar.markdown("---")
 
@@ -540,7 +566,6 @@ elif step_num == 100:
         st.rerun()
     else:
         safe_render(page_dashboard.render)
-
 else:
     st.warning("Unknown step. Resetting to Step 1.")
     st.session_state.step = 1
@@ -548,11 +573,3 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
-
-
-
-
-
-
-
-
