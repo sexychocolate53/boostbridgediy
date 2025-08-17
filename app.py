@@ -368,9 +368,9 @@ rq = remaining_quota(user_rec)  # {'daily_left','monthly_left','daily_limit','mo
 plan = (user_rec.get("plan") or "individual").lower()
 
 # ---------- Dynamic top nav with plan-based CTA ----------
-INDIVIDUAL_LINK = os.getenv("STRIPE_LINK_INDIVIDUAL", "")  # e.g., https://buy.stripe.com/....
-PRO_LINK        = os.getenv("STRIPE_LINK_PRO", "")         # e.g., https://buy.stripe.com/....
-PORTAL_LINK     = os.getenv("STRIPE_PORTAL_LINK", "")      # optional: customer portal
+INDIVIDUAL_LINK = os.getenv("STRIPE_LINK_INDIVIDUAL") or st.secrets.get("STRIPE_LINK_INDIVIDUAL", "")
+PRO_LINK        = os.getenv("STRIPE_LINK_PRO")        or st.secrets.get("STRIPE_LINK_PRO", "")
+PORTAL_LINK     = os.getenv("STRIPE_PORTAL_LINK")     or st.secrets.get("STRIPE_PORTAL_LINK", "")
 
 cta_text, cta_url = None, None
 if plan == "starter" and INDIVIDUAL_LINK:
@@ -573,3 +573,4 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
