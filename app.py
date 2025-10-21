@@ -18,6 +18,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ---- Lock down Streamlit chrome (hide GitHub/toolbar/footer) ----
+st.markdown("""
+<style>
+/* Hide Streamlit's top toolbar (includes GitHub/Fork) */
+[data-testid="stToolbar"] { visibility: hidden; height: 0; position: fixed; top: -100px; }
+/* Hide "Made with Streamlit" footer */
+footer { visibility: hidden; }
+/* Hide any default header link buttons just in case */
+header [data-testid="baseLinkButton-header"] { display: none !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # ---------- Top Nav (single definition) ----------
 def render_top_nav(
     contact_email: str = "stacy@boostbridgediy.com",
@@ -573,4 +585,5 @@ else:
 
 # ---------- Footer (always last) ----------
 render_footer("stacy@boostbridgediy.com")
+
 
