@@ -104,6 +104,116 @@ def check_password(password: str, hashed: str) -> bool:
         return bcrypt.checkpw(salted, hashed.encode("utf-8"))
     except Exception:
         return False
+# ====== PASSWORD RESET (OTP) ======
+import random
+from datetime import datetime, timedelta, timezone
+
+def _header_map(ws):
+    header = ws.row_values(1)
+    return {name: i+1 for i, name in enumerate(header)}
+
+def _find_row_by_email(ws, email: str):
+    # Prefer an exact match in the Email column if you have one
+    hdr = _header_map(ws)
+    email_col = hdr.get("email") or hdr.get("Email") or None
+    if email_col:
+        # Pull the column and search manually to avoid false matches
+        col_vals = ws.col_values(email_col)
+        for i, v in enumerate(col_vals, start=1):
+            if i == 1:  # skip header
+                continue
+            if (v or "").strip().lower() == email.strip().lower():
+                return i
+        return None
+    # Fallback: first occurrence anywhere
+    cell = ws.find(email)
+    return cell.row if cell else None
+
+def _now_utc_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+def _code_expires(minutes=15):
+    return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+
+def _six_digit_code():
+    return f"{random.randint(100000, 999999)}"
+
+def request_password_reset(email: str, ttl_minutes: int = 15) -> bool:
+    """Generate & store a 6-digit code, email it, return True if user exists."""
+    ws = _get_users_sheet()
+    row = _find_row_by_email(ws, email)
+    if not row:
+        return False
+    hdr = _header_map(ws)
+    code = _six_digit_code()
+    expires = _code_expires(ttl_minutes)
+
+    if "reset_code" in hdr:   _with_backoff(ws.update_cell, row, hdr["reset_code"], code)
+    if "reset_expires" in hdr:_with_backoff(ws.update_cell, row, hdr["reset_expires"], expires)
+    if "reset_attempts" in hdr:_with_backoff(ws.update_cell, row, hdr["reset_attempts"], "0")
+
+    # TODO: replace this stub with your real mailer (SMTP / SendGrid)
+    _send_email_stub(
+        to_email=email,
+        subject="Your BoostBridgeDIY reset code",
+        text=f"Your one-time code is: {code}\nIt expires in {ttl_minutes} minutes."
+    )
+    return True
+
+def verify_reset_code_and_update_password(email: str, code: str, new_password: str) -> tuple[bool, str]:
+    """Return (ok, message). On success, writes new bcrypt hash and clears reset fields."""
+    if len(new_password) < 8:
+        return (False, "Password must be at least 8 characters.")
+
+    ws = _get_users_sheet()
+    row = _find_row_by_email(ws, email)
+    if not row:
+        return (False, "No account found with that email.")
+
+    hdr = _header_map(ws)
+    vals = ws.row_values(row)
+    rec = {name: (vals[idx-1] if idx-1 < len(vals) else "") for name, idx in hdr.items()}
+
+    saved_code = (rec.get("reset_code") or "").strip()
+    expires = (rec.get("reset_expires") or "").strip()
+
+    # Expiry check
+    try:
+        if not expires or datetime.now(timezone.utc) > datetime.fromisoformat(expires):
+            return (False, "Code expired. Please request a new code.")
+    except Exception:
+        return (False, "Invalid code expiry. Request a new code.")
+
+    # Code check
+    if code.strip() != saved_code:
+        if "reset_attempts" in hdr:
+            try:
+                n = int((rec.get("reset_attempts") or "0").strip() or 0) + 1
+                _with_backoff(ws.update_cell, row, hdr["reset_attempts"], str(n))
+            except Exception:
+                pass
+        return (False, "Incorrect code.")
+
+    # New bcrypt hash (matches your scheme: bcrypt(password + PEPPER))
+    new_hash = hash_password(new_password)
+
+    # Write new password hash
+    pw_col = hdr.get("password_hash") or hdr.get("Password Hash") or hdr.get("password")
+    if not pw_col:
+        return (False, "Password column not found. Make sure 'password_hash' exists.")
+    _with_backoff(ws.update_cell, row, pw_col, new_hash)
+
+    # Clear reset fields
+    if "reset_code" in hdr:     _with_backoff(ws.update_cell, row, hdr["reset_code"], "")
+    if "reset_expires" in hdr:  _with_backoff(ws.update_cell, row, hdr["reset_expires"], "")
+    if "reset_attempts" in hdr: _with_backoff(ws.update_cell, row, hdr["reset_attempts"], "0")
+
+    return (True, "Password updated. You can log in now.")
+
+def _send_email_stub(to_email: str, subject: str, text: str):
+    """Replace with real email sending (SMTP/SendGrid). Keeping stub so flow works in dev."""
+    print(f"[DEV EMAIL] to={to_email}\nSubject: {subject}\n\n{text}\n")
+
 
 # ====== SHEET READ CACHES ======
 import time
@@ -454,3 +564,4 @@ def auth_ui():
                 st.rerun()
             else:
                 st.error(msg)
+
