@@ -437,6 +437,55 @@ def auth_ui():
                 st.rerun()
         return True
 
+    # -----------------------------------------
+    # Forgot-password mini-UI (kept inside Login tab)
+    # -----------------------------------------
+    def _forgot_password_ui():
+        mode = st.session_state.get("_fp_mode", "ask_email")
+
+        if mode == "ask_email":
+            st.subheader("Forgot password")
+            email = st.text_input("Account email", key="_fp_email")
+            c1, c2 = st.columns([1,1])
+            if c1.button("Send code", key="fp_send"):
+                try:
+                    ok = request_password_reset((email or "").strip())
+                except APIError:
+                    st.info("Syncing… try again in a moment.")
+                    ok = False
+                if ok:
+                    st.success("We sent a 6-digit code to your email. It expires in 15 minutes.")
+                    st.session_state["_fp_mode"] = "enter_code"
+                    st.experimental_rerun()
+                else:
+                    st.error("No account found with that email.")
+            if c2.button("Cancel", key="fp_cancel"):
+                for k in ["_fp_mode","_fp_email","_fp_code","_fp_newpw","_show_fp"]:
+                    st.session_state.pop(k, None)
+                st.experimental_rerun()
+
+        elif mode == "enter_code":
+            st.subheader("Enter code & new password")
+            code = st.text_input("6-digit code", key="_fp_code")
+            new_pw = st.text_input("New password", type="password", key="_fp_newpw")
+            c1, c2 = st.columns([1,1])
+            if c1.button("Reset password", key="fp_reset"):
+                email = (st.session_state.get("_fp_email") or "").strip()
+                try:
+                    ok, msg = verify_reset_code_and_update_password(email, (code or "").strip(), (new_pw or ""))
+                except APIError:
+                    ok, msg = False, "We’re syncing with Google. Please try again."
+                if ok:
+                    st.success("Password updated. You can log in now.")
+                    for k in ["_fp_mode","_fp_email","_fp_code","_fp_newpw","_show_fp"]:
+                        st.session_state.pop(k, None)
+                    st.experimental_rerun()
+                else:
+                    st.error(msg)
+            if c2.button("Back", key="fp_back"):
+                st.session_state["_fp_mode"] = "ask_email"
+                st.experimental_rerun()
+
     # Not logged in → Login / Signup tabs (use forms to avoid extra reruns)
     tabs = st.sidebar.tabs(["Login", "Sign up"])
 
@@ -446,6 +495,18 @@ def auth_ui():
             li_email = st.text_input("Email", key="auth_login_email")
             li_pw = st.text_input("Password", type="password", key="auth_login_pw")
             login_click = st.form_submit_button("Login", use_container_width=True)
+
+        # "Forgot password?" trigger (outside the form so it doesn't submit)
+        fp_cols = st.columns([1,1,1])
+        with fp_cols[0]:
+            if st.button("Forgot password?", key="auth_forgot"):
+                st.session_state["_show_fp"] = True
+                st.session_state["_fp_mode"] = "ask_email"
+
+        # Show the FP panel right under the button when active
+        if st.session_state.get("_show_fp"):
+            _forgot_password_ui()
+            st.markdown("---")  # visual divider
 
         # init retry counter once
         if "_auth_retry" not in st.session_state:
@@ -461,7 +522,6 @@ def auth_ui():
             try:
                 user = find_user(li_email)  # single cached read
             except APIError:
-                # gentle auto-retry (like your sidebar refresh does)
                 attempt = st.session_state["_auth_retry"]
                 if attempt < 3:
                     st.info("Syncing your account… one sec.")
@@ -504,7 +564,7 @@ def auth_ui():
 
             st.success("Login successful.")
             st.rerun()
-        
+      
 
     # ---- Sign up tab ----
     with tabs[1]:
@@ -564,4 +624,5 @@ def auth_ui():
                 st.rerun()
             else:
                 st.error(msg)
+
 
