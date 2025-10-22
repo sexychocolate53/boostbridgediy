@@ -456,13 +456,13 @@ def auth_ui():
                 if ok:
                     st.success("We sent a 6-digit code to your email. It expires in 15 minutes.")
                     st.session_state["_fp_mode"] = "enter_code"
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("No account found with that email.")
             if c2.button("Cancel", key="fp_cancel"):
                 for k in ["_fp_mode","_fp_email","_fp_code","_fp_newpw","_show_fp"]:
                     st.session_state.pop(k, None)
-                st.experimental_rerun()
+                st.rerun()
 
         elif mode == "enter_code":
             st.subheader("Enter code & new password")
@@ -479,12 +479,12 @@ def auth_ui():
                     st.success("Password updated. You can log in now.")
                     for k in ["_fp_mode","_fp_email","_fp_code","_fp_newpw","_show_fp"]:
                         st.session_state.pop(k, None)
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error(msg)
             if c2.button("Back", key="fp_back"):
                 st.session_state["_fp_mode"] = "ask_email"
-                st.experimental_rerun()
+                st.rerun()
 
     # Not logged in → Login / Signup tabs (use forms to avoid extra reruns)
     tabs = st.sidebar.tabs(["Login", "Sign up"])
@@ -624,5 +624,6 @@ def auth_ui():
                 st.rerun()
             else:
                 st.error(msg)
+
 
 
